@@ -30,6 +30,7 @@ if ($CorePath) {
     $CorePath = (Get-Item -LiteralPath $CorePath).FullName
 }
 if (-not $ResultsDirectory) { $ResultsDirectory = Join-Path $testRoot 'Tests\results' }
+$ownsScratchDirectory = -not $ScratchDirectory
 if (-not $ScratchDirectory) { $ScratchDirectory = Join-Path ([IO.Path]::GetTempPath()) ('SVPN35-' + [Guid]::NewGuid().ToString('N').Substring(0, 8)) }
 $ResultsDirectory = [IO.Path]::GetFullPath($ResultsDirectory)
 $ScratchDirectory = [IO.Path]::GetFullPath($ScratchDirectory)
@@ -94,3 +95,13 @@ if ($CorePath) {
     Write-Output 'Xray fixtures and lifecycle tests skipped: supply -CorePath to enable them.'
 }
 Write-Output ('All requested tests passed. Reports: ' + $testRun)
+if ($ownsScratchDirectory -and (Test-Path -LiteralPath $ScratchDirectory)) {
+    $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+    $resolvedScratch = (Resolve-Path -LiteralPath $ScratchDirectory).Path
+    if (-not $resolvedScratch.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase) -or
+        [IO.Path]::GetFileName($resolvedScratch) -notmatch '^SVPN35-[0-9a-f]{8}$') { throw 'Unexpected generated scratch path; refusing cleanup.' }
+    $linkedScratchItems = @(Get-Item -LiteralPath $resolvedScratch -Force; Get-ChildItem -LiteralPath $resolvedScratch -Force -Recurse) | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }
+    if ($linkedScratchItems) { throw 'Unexpected link in test scratch directory; refusing cleanup.' }
+    Remove-Item -LiteralPath $resolvedScratch -Recurse -Force
+    Write-Output 'Generated test copies removed; reports retained.'
+}
