@@ -16,16 +16,26 @@ $privacy=(& $GhPath repo view $repository --json isPrivate | ConvertFrom-Json).i
 if(-not $privacy){throw 'Refusing publication: repository must remain private.'}
 $tag='v'+$versionObject.ToString(3)
 $notes='SimpleVPN 7 '+$versionObject.ToString(3)+'. Signed Windows 7 SP1 x64 release. Settings and subscription data are never included.'
-& $GhPath release create $tag $setup.FullName --repo $repository --draft --title ('SimpleVPN 7 '+$versionObject.ToString(3)) --notes $notes
-if($LASTEXITCODE -ne 0){throw 'Draft release creation failed. Existing releases are not overwritten.'}
-$release=& $GhPath api ('repos/'+$repository+'/releases/tags/'+$tag) | ConvertFrom-Json
-if($LASTEXITCODE -ne 0){throw 'Cannot read draft release.'}
+$releases=@(& $GhPath api ('repos/'+$repository+'/releases?per_page=100') | ConvertFrom-Json)
+if($LASTEXITCODE -ne 0){throw 'Cannot list releases.'}
+$matching=@($releases | Where-Object tag_name -eq $tag)
+if($matching.Count -gt 1){throw 'Ambiguous release tag.'}
+if($matching.Count -eq 0){
+ & $GhPath release create $tag $setup.FullName --repo $repository --draft --title ('SimpleVPN 7 '+$versionObject.ToString(3)) --notes $notes
+ if($LASTEXITCODE -ne 0){throw 'Draft release creation failed.'}
+ $releases=@(& $GhPath api ('repos/'+$repository+'/releases?per_page=100') | ConvertFrom-Json)
+ $matching=@($releases | Where-Object tag_name -eq $tag)
+}
+if($matching.Count -ne 1 -or -not $matching[0].draft){throw 'Only an unpublished draft can be completed; published releases are immutable.'}
+$release=$matching[0]
 $asset=@($release.assets | Where-Object name -eq $setup.Name)
 if($asset.Count -ne 1){throw 'Expected exactly one installer asset.'}
+$expectedHash=(Get-FileHash -LiteralPath $setup.FullName -Algorithm SHA256).Hash
+if($asset[0].size -ne $setup.Length -or ($asset[0].digest -and $asset[0].digest -ne ('sha256:'+$expectedHash.ToLowerInvariant()))){throw 'Draft installer differs from the local release.'}
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $manifestPath=Join-Path $OutputDirectory 'update.json'
 $signaturePath=Join-Path $OutputDirectory 'update.json.sig'
-$manifest=[ordered]@{Version=$versionObject.ToString(4);Sha256=(Get-FileHash -LiteralPath $setup.FullName -Algorithm SHA256).Hash;AssetUrl=$asset[0].url;Size=$setup.Length}
+$manifest=[ordered]@{Version=$versionObject.ToString(4);Sha256=$expectedHash;AssetUrl=$asset[0].url;Size=$setup.Length}
 $manifestBytes=[Text.Encoding]::UTF8.GetBytes(($manifest | ConvertTo-Json -Compress))
 [IO.File]::WriteAllBytes($manifestPath,$manifestBytes)
 $keyBytes=[Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes($SigningKeyPath),$null,[Security.Cryptography.DataProtectionScope]::CurrentUser)
