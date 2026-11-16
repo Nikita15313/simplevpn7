@@ -7,7 +7,7 @@
 [Setup]
 AppId={{8FBBD978-DF0D-438A-9C8B-06C5A40F7B02}
 AppName=SimpleVPN 7
-AppVersion=3.0.0
+AppVersion=3.0.1
 AppPublisher=SimpleVPN 7
 DefaultDirName={code:DefaultFolder}
 DefaultGroupName=SimpleVPN 7
@@ -30,7 +30,7 @@ RestartApplications=no
 SetupLogging=yes
 VersionInfoDescription=SimpleVPN 7 — установка для Windows 7 x64
 VersionInfoProductName=SimpleVPN 7
-VersionInfoProductVersion=3.0.0
+VersionInfoProductVersion=3.0.1
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"

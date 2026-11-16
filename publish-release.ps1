@@ -13,7 +13,7 @@ if($versionObject.Revision -lt 0){throw 'Use a four-part version, for example 3.
 $setup=Get-Item -LiteralPath $SetupPath
 if($setup.Length -lt 1024 -or $setup.Length -gt 128MB){throw 'Installer size is invalid.'}
 $privacy=(& $GhPath repo view $repository --json isPrivate | ConvertFrom-Json).isPrivate
-if(-not $privacy){throw 'Refusing publication: repository must remain private.'}
+if($privacy){throw 'Refusing publication: the anonymous update channel must be public.'}
 $tag='v'+$versionObject.ToString(3)
 $notes='SimpleVPN 7 '+$versionObject.ToString(3)+'. Signed Windows 7 SP1 x64 release. Settings and subscription data are never included.'
 $releases=@(& $GhPath api ('repos/'+$repository+'/releases?per_page=100') | ConvertFrom-Json)
@@ -50,4 +50,4 @@ try {
 if($LASTEXITCODE -ne 0){throw 'Signed metadata upload failed; release remains a draft.'}
 & $GhPath release edit $tag --repo $repository --draft=false --latest
 if($LASTEXITCODE -ne 0){throw 'Release publication failed.'}
-Write-Output ('Published private signed release: https://github.com/'+$repository+'/releases/tag/'+$tag)
+Write-Output ('Published public signed release: https://github.com/'+$repository+'/releases/tag/'+$tag)

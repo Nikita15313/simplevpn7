@@ -15,7 +15,7 @@ namespace SimpleVPN
         readonly TextBox url, directDomains, proxyDomains, testUrl; readonly ChoiceButton theme, routing, dns;
         readonly NumericUpDown interval, timeout; readonly CheckBox startup, autoConnect, pingOnOpen, sortLatency, fastest, ads;
         readonly TextButton save, refresh; readonly IconButton reveal; readonly Label message, updated; bool working;
-        readonly UpdateManager updater; readonly CheckBox autoUpdate; readonly TextBox updateToken; readonly Label updateStatus, tokenStatus; readonly TextButton checkUpdate;
+        readonly UpdateManager updater; readonly CheckBox autoUpdate; readonly Label updateStatus; readonly TextButton checkUpdate;
         internal SettingsDialog(AppController value, Icon icon, int section) : this(value, icon, section, false) { }
         SettingsDialog(AppController value, Icon icon, int section, bool isPreview)
         {
@@ -74,16 +74,12 @@ namespace SimpleVPN
             p = pages[5]; Title(p, "Обновления приложения");
             if (!preview) updater = new UpdateManager(new LocalStore(AppDomain.CurrentDomain.BaseDirectory));
             var updatePreferences = preview ? new UpdatePreferences() : updater.LoadPreferences();
+            Hint(p, "Версия " + typeof(MainForm).Assembly.GetName().Version.ToString(3), 32, true);
             autoUpdate = Toggle(p, "Автоматически загружать обновления", updatePreferences.AutoUpdate);
             Hint(p, "Новая версия загрузится в фоне и установится при следующем запуске приложения. Подписки и настройки сохранятся.", 64);
             updateStatus = Hint(p, preview ? "Установлена текущая версия приложения." : updater.LoadStatus(), 48);
             checkUpdate = new TextButton("Проверить обновления сейчас", false) { Height = 37, Margin = new Padding(0, 0, 0, 12) }; checkUpdate.Click += delegate { CheckUpdates(); }; p.Controls.Add(checkUpdate);
-            Caption(p, "Доступ к приватному проекту GitHub");
-            tokenStatus = Hint(p, !String.IsNullOrEmpty(updatePreferences.AccessToken) ? "Ключ сохранён. Для замены вставьте новый." : "Ключ ещё не добавлен.", 29);
-            updateToken = new TextBox { Text = "", UseSystemPasswordChar = true, Font = UiDraw.Font(10.5F, false), BorderStyle = BorderStyle.FixedSingle, Height = 29, Margin = new Padding(0, 0, 0, 9), MaxLength = 512, AccessibleName = "Ключ GitHub для приватных обновлений" }; p.Controls.Add(updateToken);
-            Hint(p, "Один раз добавьте ключ GitHub с доступом Contents: read только к этому проекту. Ключ хранится зашифрованным в вашей учётной записи Windows.", 68);
-            var createToken = new TextButton("Настроить доступ на GitHub", false) { Height = 35, Margin = new Padding(0, 0, 0, 9) }; createToken.Click += delegate { if (!preview) MainForm.OpenWebsite(UpdateManager.TokenSetupUrl); }; p.Controls.Add(createToken);
-            var clearToken = new TextButton("Удалить сохранённый ключ", false) { Height = 33, Margin = new Padding(0, 0, 0, 9) }; clearToken.Click += delegate { if (preview || working) return; try { updater.ClearToken(); updateToken.Clear(); tokenStatus.Text = "Ключ удалён."; } catch { message.Text = "Не удалось удалить ключ."; } }; p.Controls.Add(clearToken);
+            var project = new TextButton("Страница приложения", false) { Height = 35, Margin = new Padding(0, 0, 0, 9) }; project.Click += delegate { if (!preview) MainForm.OpenWebsite(UpdateManager.RepositoryUrl); }; p.Controls.Add(project);
 
             var bottom = new Panel { Dock = DockStyle.Fill, Margin = new Padding(0, 8, 0, 0) }; message = new Label { Dock = DockStyle.Top, Height = 38, Font = UiDraw.Font(9.2F, false), Tag = "muted", TextAlign = ContentAlignment.MiddleLeft };
             var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 42, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Margin = Padding.Empty };
@@ -135,14 +131,14 @@ namespace SimpleVPN
             {
                 working = false; if (IsDisposed || Disposing) return; url.UseSystemPasswordChar = true;
                 if (error != null) message.Text = "Не удалось сохранить. Проверьте ссылку и правила маршрутизации.";
-                else { preferences = controller.CopySettings(); UiPalette.Dark = preferences.Theme != "light"; UiStyles.Apply(this); message.Text = !String.IsNullOrEmpty(controller.Notice) ? controller.Notice : "Настройки сохранены."; try { updater.SavePreferences(autoUpdate.Checked, updateToken.Text.Trim()); updateToken.Clear(); tokenStatus.Text = !String.IsNullOrEmpty(updater.LoadPreferences().AccessToken) ? "Ключ сохранён." : "Ключ ещё не добавлен."; } catch { message.Text = "Параметры VPN сохранены. Не удалось сохранить ключ обновлений."; } }
+                else { preferences = controller.CopySettings(); UiPalette.Dark = preferences.Theme != "light"; UiStyles.Apply(this); message.Text = !String.IsNullOrEmpty(controller.Notice) ? controller.Notice : "Настройки сохранены."; try { updater.SavePreferences(autoUpdate.Checked, ""); } catch { message.Text = "Параметры VPN сохранены. Не удалось сохранить настройки обновления."; } }
                 UpdateState();
             });
         }
         void CheckUpdates()
         {
             if (preview || working || controller.IsBusy) return;
-            try { updater.SavePreferences(autoUpdate.Checked, updateToken.Text.Trim()); updateToken.Clear(); }
+            try { updater.SavePreferences(autoUpdate.Checked, ""); }
             catch { message.Text = "Не удалось сохранить настройки обновления."; return; }
             working = true; updateStatus.Text = "Проверяем обновления…"; UpdateState();
             var worker = new BackgroundWorker(); string result = null;

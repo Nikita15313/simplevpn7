@@ -33,9 +33,11 @@ internal static class UpdateTests {
     var store=new LocalStore(args[0]);var manager=new UpdateManager(store);
     Check(manager.LoadPreferences().AutoUpdate,"default automatic");
     manager.SavePreferences(true,"synthetic_read_key");manager.SavePreferences(false,"");
-    Check(!manager.LoadPreferences().AutoUpdate&&manager.LoadPreferences().AccessToken=="synthetic_read_key","blank preserves DPAPI key");
+    Check(!manager.LoadPreferences().AutoUpdate&&manager.LoadPreferences().AccessToken=="","public updates discard supplied key");
     string wire=Encoding.UTF8.GetString(File.ReadAllBytes(Path.Combine(store.Data,"updates.dpapi")));Check(wire.IndexOf("synthetic_read_key")<0,"no plain key");
-    Reject(delegate{manager.SavePreferences(true,"bad\r\nkey");},"header injection");
+    store.Save("updates.dpapi",new UpdatePreferences { AutoUpdate=false,AccessToken="legacy_key" });
+    Check(!manager.LoadPreferences().AutoUpdate&&manager.LoadPreferences().AccessToken=="","legacy credential removed, preference preserved");
+    Check(store.Load<UpdatePreferences>("updates.dpapi").AccessToken=="","legacy credential removed from stored settings");
     manager.ClearToken();Check(manager.LoadPreferences().AccessToken=="","clear key");
     Check(!manager.TryLaunchPending(),"no pending installer");
    }

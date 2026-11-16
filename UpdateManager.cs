@@ -13,20 +13,24 @@ namespace SimpleVPN {
  public sealed class PendingUpdate { public string Manifest, Signature; public DateTime AttemptUtc; }
  public sealed class UpdateManager {
   public const string RepositoryUrl = "https://github.com/Nikita15313/simplevpn7";
-  public const string TokenSetupUrl = "https://github.com/settings/personal-access-tokens/new?name=SimpleVPN7%20updates&description=Read%20private%20SimpleVPN7%20releases&target_name=Nikita15313&contents=read";
   const string Api = "https://api.github.com/repos/Nikita15313/simplevpn7/releases/";
   readonly LocalStore store;
   System.Threading.Timer periodic;
   public UpdateManager(LocalStore local) { if(local==null)throw new ArgumentNullException("local");store=local; }
-  public UpdatePreferences LoadPreferences() { try { return store.Load<UpdatePreferences>("updates.dpapi") ?? new UpdatePreferences(); } catch { return new UpdatePreferences(); } }
+  public UpdatePreferences LoadPreferences() {
+   try {
+    var value=store.Load<UpdatePreferences>("updates.dpapi") ?? new UpdatePreferences();
+    if(!String.IsNullOrEmpty(value.AccessToken)) {
+     value.AccessToken="";
+     try { store.Save("updates.dpapi",value); } catch { }
+    }
+    return value;
+   } catch { return new UpdatePreferences(); }
+  }
   public void SavePreferences(bool auto,string accessToken) {
-   var value=LoadPreferences(); value.AutoUpdate=auto;
-   if(!String.IsNullOrEmpty(accessToken)) {
-    accessToken=accessToken.Trim();
-    if(accessToken.Length>1024)throw new ArgumentException("Ключ слишком длинный.");
-    foreach(char c in accessToken)if(c<33||c>126)throw new ArgumentException("Ключ содержит недопустимые символы.");
-    value.AccessToken=accessToken;
-   }
+   // The second argument is retained for settings migration only. Public
+   // releases never need or send a GitHub credential, including an old key.
+   var value=LoadPreferences(); value.AutoUpdate=auto;value.AccessToken="";
    store.Save("updates.dpapi",value);
   }
   public void ClearToken() { var value=LoadPreferences();value.AccessToken="";store.Save("updates.dpapi",value); }
@@ -56,20 +60,18 @@ namespace SimpleVPN {
     try {
      try { owned=gate.WaitOne(0,false); } catch(System.Threading.AbandonedMutexException) { owned=true; }
      if(!owned)return "Проверка обновления уже выполняется.";
-     var prefs=LoadPreferences();
-     if(String.IsNullOrEmpty(prefs.AccessToken))return Status("Добавьте ключ чтения GitHub, чтобы получать приватные обновления.");
      var json=LocalStore.Json();
-     var release=json.Deserialize<Dictionary<string,object>>(Encoding.UTF8.GetString(Get(Api+"latest",prefs.AccessToken,"application/vnd.github+json",2*1024*1024)));
+     var release=json.Deserialize<Dictionary<string,object>>(Encoding.UTF8.GetString(Get(Api+"latest","","application/vnd.github+json",2*1024*1024)));
      object draft, prerelease;
      if(release==null||(release.TryGetValue("draft",out draft)&&Convert.ToBoolean(draft))||(release.TryGetValue("prerelease",out prerelease)&&Convert.ToBoolean(prerelease)))throw new IOException("UPDATE_RELEASE_INVALID");
      string manifestUrl=FindAsset(release,"update.json"), signatureUrl=FindAsset(release,"update.json.sig");
-     byte[] bytes=Get(manifestUrl,prefs.AccessToken,"application/octet-stream",8192);
-     string signature=Encoding.ASCII.GetString(Get(signatureUrl,prefs.AccessToken,"application/octet-stream",2048)).Trim();
+     byte[] bytes=Get(manifestUrl,"","application/octet-stream",8192);
+     string signature=Encoding.ASCII.GetString(Get(signatureUrl,"","application/octet-stream",2048)).Trim();
      UpdateManifest manifest=ValidateManifest(bytes,signature,UpdateTrust.PublicKeyXml);
      Version version=new Version(manifest.Version), current=Assembly.GetExecutingAssembly().GetName().Version;
      if(version.CompareTo(current)<=0)return Status("Установлена последняя версия: "+current.ToString(3)+".");
      string folder=Path.Combine(store.Data,"updates");Directory.CreateDirectory(folder);LocalStore.ProtectDirectory(folder);
-     byte[] installer=Get(manifest.AssetUrl,prefs.AccessToken,"application/octet-stream",128*1024*1024);
+     byte[] installer=Get(manifest.AssetUrl,"","application/octet-stream",128*1024*1024);
      ValidateInstaller(installer,manifest);
      LocalStore.Atomic(Path.Combine(folder,"setup.exe"),installer);
      store.Save("pending-update.dpapi",new PendingUpdate { Manifest=Convert.ToBase64String(bytes),Signature=signature });
@@ -77,7 +79,8 @@ namespace SimpleVPN {
     } catch(Exception error) {
      store.Log("UPDATE_CHECK_FAILED");
      var io=error as IOException;
-     if(io!=null&&(io.Message=="UPDATE_HTTP401"||io.Message=="UPDATE_HTTP403"||io.Message=="UPDATE_HTTP404"))return Status("GitHub не предоставил доступ. Проверьте срок ключа и разрешение Contents: read для SimpleVPN7.");
+     if(io!=null&&(io.Message=="UPDATE_HTTP401"||io.Message=="UPDATE_HTTP403"))return Status("GitHub временно ограничил запросы. Повторите проверку позже.");
+     if(io!=null&&io.Message=="UPDATE_HTTP404")return Status("Релиз пока недоступен. Повторите проверку позже.");
      return Status("Не удалось получить обновление. Текущая версия продолжит работать.");
     } finally { if(owned)gate.ReleaseMutex(); }
    }
